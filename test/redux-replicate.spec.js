@@ -65,6 +65,7 @@ describe('redux-replicate', () => {
     const storeState = store.getState();
 
     expect(typeof store.setState).toBe('function');
+    expect(typeof store.setKey).toBe('function');
     expect(typeof storeState).toBe('object');
     expect(storeState.wow).toBe('such storage');
     expect(storeState.very).toBe('cool');
