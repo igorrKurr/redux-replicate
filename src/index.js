@@ -1,6 +1,21 @@
-export default function replicate (storeName, ...replicators) {
+/**
+ * Store enhancer designed to replicate stores before/after `dispatch`.
+ *
+ * @param {String} storeKey
+ * @param {Object|Array} replicator(s)
+ * @return {Function}
+ * @api public
+ */
+export default function replicate (storeKey, ...replicators) {
   return next => (reducer, initialState) => {
     const store = next(reducer, initialState);
+    const initReplicators = () => {
+      for (let replicator of replicators) {
+        if (replicator.init) {
+          replicator.init(storeKey, store);
+        }
+      }
+    };
 
     if (!store.setState) {
       store.setState = (state) => {
@@ -11,11 +26,16 @@ export default function replicate (storeName, ...replicators) {
       };
     }
 
-    for (let replicator of replicators) {
-      if (replicator.init) {
-        replicator.init(storeName, store);
-      }
+    if (!store.setKey) {
+      store.setKey = (key) => {
+        if (key !== storeKey) {
+          storeKey = key;
+          initReplicators();
+        }
+      };
     }
+
+    initReplicators();
 
     return {
       ...store,
@@ -23,15 +43,15 @@ export default function replicate (storeName, ...replicators) {
       dispatch(action) {
         for (let replicator of replicators) {
           if (replicator.preDispatch) {
-            replicator.preDispatch(storeName, store, action);
+            replicator.preDispatch(storeKey, store, action);
           }
         }
 
         store.dispatch(action);
-        
+
         for (let replicator of replicators) {
           if (replicator.postDispatch) {
-            replicator.postDispatch(storeName, store, action);
+            replicator.postDispatch(storeKey, store, action);
           }
         }
 
@@ -40,4 +60,3 @@ export default function replicate (storeName, ...replicators) {
     };
   };
 }
-
