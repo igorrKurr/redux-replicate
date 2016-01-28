@@ -16,7 +16,7 @@ npm install redux-replicate --save
 ## Usage
 
 ```js
-replicate (String storeKey, Object ...replicators)
+replicate (String storeKey, Object|Array replicator(s))
 ```
 
 This package exports a single function which returns a [`redux`](https://github.com/rackt/redux) store enhancer.  The first argument should be the name of your store, and the rest of the arguments should be replicators.  The enhancer adds the following 2 methods to the `store` object:
@@ -32,9 +32,9 @@ A replicator should be an object with at least one of the following keys as func
 
 - `init (String storeKey, Object store)` - Called when initializing the store.  You can, for example, use the `store.setState` method here to asynchronously update the state of the store.
 
-- `preDispatch (String storeKey, Object store, Object action)` - Called immediately before some `action` is dispatched.
+- `preReduction (String storeKey, Object state, Object action)` - Called immediately before some `action` is dispatched.
 
-- `postDispatch (String storeKey, Object store, Object action)` - Called immediately after some `action` is dispatched.
+- `postReduction (String storeKey, Object state, Object action)` - Called immediately after some `action` is dispatched.
 
 
 ## Example replicator
@@ -47,13 +47,13 @@ See [`redux-replicate-localforage`](https://github.com/loggur/redux-replicate-lo
 ```js
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { addEnhancer } from 'react-redux-provide';
+import { unshiftEnhancer } from 'react-redux-provide';
 import replicate from 'redux-replicate';
 import localforageReplicator from 'redux-replicate-localforage';
 import { coolMap } from './providers/index';
 import { App } from './components/index';
 
-addEnhancer({ coolMap }, replicate('coolMap', localforageReplicator));
+unshiftEnhancer({ coolMap }, replicate('coolMap', localforageReplicator));
 
 ReactDOM.render(<App/>, document.getElementById('root'));
 ```

@@ -1,105 +1,93 @@
+export mergeStoresStates from './mergeStoresStates';
+
 /**
- * Store enhancer designed to replicate stores before/after `dispatch`.
+ * Store enhancer designed to replicate stores' states before/after reductions.
  *
  * @param {String} storeKey
  * @param {Object|Array} replicator(s)
  * @return {Function}
  * @api public
  */
-export default function replicate (storeKey, ...replicators) {
+export default function replicate (storeKey, replicators) {
+  if (!Array.isArray(replicators)) {
+    replicators = [ replicators ];
+  }
+
   return next => (reducer, initialState) => {
-    let store = null;
-    const stores = {};
-    const listeners = [];
-
-    function callListeners () {
-      listeners.slice().forEach(listener => listener());
-    }
-
-    function setStore () {
-      if (!stores[storeKey]) {
-        stores[storeKey] = next(reducer, initialState);
+    let nextState = null;
+    let replaceState = false;
+    const mergeNextState = (state, mocked) => {
+      if (
+        !replaceState
+        && state && typeof state === 'object'
+        && nextState && typeof nextState === 'object'
+        && !Array.isArray(state)
+        && !Array.isArray(nextState)
+      ) {
+        state = { ...state, ...nextState };
+      } else {
+        state = nextState;
       }
 
-      store = stores[storeKey];
+      replaceState = false;
 
-      if (!store.setKey) {
-        store.setKey = (key) => {
-          if (key !== storeKey) {
-            storeKey = key;
-            setStore();
-          }
-        };
+      if (!mocked) {
+        nextState = next(reducer, state).getState();
+        return mergeNextState(state, true);
       }
 
-      if (!store.setState) {
-        store.setState = (state) => {
-          if (state) {
-            store.replaceReducer(current => ({ ...current, ...state }));
-            store.replaceReducer(reducer);
-            callListeners();
-          }
-        };
+      nextState = null;
+      return state;
+    };
+
+    const replicatedReducer = (state, action) => {
+      for (let replicator of replicators) {
+        if (replicator.ready && replicator.preReduction) {
+          replicator.preReduction(storeKey, state, action);
+        }
       }
+
+      if (nextState) {
+        state = mergeNextState(state);
+      }
+      state = reducer(state, action);
 
       for (let replicator of replicators) {
-        if (replicator.init) {
-          replicator.init(storeKey, store);
+        if (replicator.ready && replicator.postReduction) {
+          replicator.postReduction(storeKey, state, action);
         }
       }
-    }
 
-    setStore();
+      return state;
+    };
 
-    return {
-      dispatch(action) {
-        for (let replicator of replicators) {
-          if (replicator.preDispatch) {
-            replicator.preDispatch(storeKey, store, action);
-          }
-        }
-
-        store.dispatch(action);
-        callListeners();
-
-        for (let replicator of replicators) {
-          if (replicator.postDispatch) {
-            replicator.postDispatch(storeKey, store, action);
-          }
-        }
-
-        return action;
-      },
-
-      setKey(key) {
-        return store.setKey(key);
-      },
-
-      setState(state) {
-        return store.setState(state);
-      },
-
-      getState() {
-        return store.getState();
-      },
-
-      subscribe(listener) {
-        let isSubscribed = true;
-        listeners.push(listener);
-
-        return function unsubscribe () {
-          if (isSubscribed) {
-            isSubscribed = false;
-            listeners.splice(listeners.indexOf(listener), 1);
-          }
-        }
-      },
-
-      replaceReducer(nextReducer) {
-        for (let key in stores) {
-          stores[key].replaceReducer(nextReducer);
+    const store = next(replicatedReducer, initialState);
+    const initReplicators = () => {
+      for (let replicator of replicators) {
+        if (replicator.init) {
+          replicator.ready = false;
+          replicator.init(storeKey, store, ready => replicator.ready = ready);
+        } else {
+          replicator.ready = true;
         }
       }
     };
+
+    store.setKey = (key) => {
+      if (key !== storeKey) {
+        storeKey = key;
+        replaceState = true;
+        initReplicators();
+      }
+    };
+
+    store.setState = (state) => {
+      nextState = state;
+      store.replaceReducer(replicatedReducer);
+    };
+
+    initReplicators();
+
+    return store;
   };
 }
