@@ -1,16 +1,19 @@
-export mergeStoresStates from './mergeStoresStates';
+import selectKeys from './selectKeys';
+import mergeStoresStates from './mergeStoresStates';
+
+export { selectKeys, mergeStoresStates };
 
 /**
  * Store enhancer designed to replicate stores' states before/after reductions.
  *
- * @param {String} storeKey
- * @param {Object|Array} replicator(s)
+ * @param {Mixed} storeKey
+ * @param {Object|Array} replicatorCreator(s)
  * @return {Function}
  * @api public
  */
-export default function replicate (storeKey, replicators) {
-  if (!Array.isArray(replicators)) {
-    replicators = [ replicators ];
+export default function replicate (storeKey, replicatorCreators) {
+  if (!Array.isArray(replicatorCreators)) {
+    replicatorCreators = [ replicatorCreators ];
   }
 
   return next => (reducer, initialState) => {
@@ -40,10 +43,13 @@ export default function replicate (storeKey, replicators) {
       return state;
     };
 
+    const replicators = replicatorCreators.map(replicator => replicator());
     const replicatedReducer = (state, action) => {
       for (let replicator of replicators) {
         if (replicator.ready && replicator.preReduction) {
-          replicator.preReduction(storeKey, state, action);
+          replicator.preReduction(
+            storeKey, selectKeys(replicator.keys, state), action
+          );
         }
       }
 
@@ -54,7 +60,9 @@ export default function replicate (storeKey, replicators) {
 
       for (let replicator of replicators) {
         if (replicator.ready && replicator.postReduction) {
-          replicator.postReduction(storeKey, state, action);
+          replicator.postReduction(
+            storeKey, selectKeys(replicator.keys, state), action
+          );
         }
       }
 

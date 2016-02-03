@@ -1,6 +1,6 @@
 import expect from 'expect';
 import { createStore, combineReducers, compose } from 'redux';
-import replicate from '../src/index';
+import replicate, { selectKeys, mergeStoresStates } from '../src/index';
 
 describe('redux-replicate', () => {
   it('should replicate', (done) => {
@@ -35,84 +35,136 @@ describe('redux-replicate', () => {
     };
     let index = 0;
     const wows = [
-      initialState.wow,   // 0: creating store, preReduction
-      initialState.wow,   // 1: creating store, postReduction
-      initialState.wow,   // 2: first `expect` verification
-      initialState.wow,   // 3: `init` called after 100ms, preReduction
-      initialState.wow,   // 4: `init` called after 100ms, postReduction
-      initialState.wow,   // 5: second `expect` verification after 200ms
-      initialState.wow,   // 6: dispatch `SET_WOW`, preReduction
-      'such test',        // 7: dispatch `SET_WOW`, postReduction
-      'such test'         // 8: last `expect` verification
+      initialState.wow,   // 0: first `expect` verification
+      initialState.wow,   // 1: `init` called after 100ms, preReduction
+      initialState.wow,   // 2: `init` called after 100ms, postReduction
+      initialState.wow,   // 3: second `expect` verification after 200ms
+      initialState.wow,   // 4: dispatch `SET_WOW`, preReduction
+      'such test',        // 5: dispatch `SET_WOW`, postReduction
+      'such test'         // 6: last `expect` verification
     ];
     const verys = [
-      initialState.very,  // 0: creating store, preReduction
-      initialState.very,  // 1: creating store, postReduction
-      initialState.very,  // 2: first `expect` verification
-      'awesome',          // 3: `init` called after 100ms, preReduction
-      'awesome',          // 4: `init` called after 100ms, postReduction
-      'awesome',          // 5: second `expect` verification after 200ms
-      'awesome',          // 6: dispatch `SET_WOW`, preReduction
-      'awesome',          // 7: dispatch `SET_WOW`, postReduction
-      'awesome'           // 8: last `expect` verification
+      initialState.very,  // 0: first `expect` verification
+      initialState.very,  // 1: `init` called after 100ms, preReduction
+      'awesome',          // 2: `init` called after 100ms, postReduction
+      'awesome',          // 3: second `expect` verification after 200ms
+      'awesome',          // 4: dispatch `SET_WOW`, preReduction
+      'awesome',          // 5: dispatch `SET_WOW`, postReduction
+      'awesome'           // 6: last `expect` verification
     ];
 
-    const replicator = {
-      init(storeName, store) {
+    const replicator = () => ({
+      init(storeKey, store, setReady) {
         setTimeout(() => {
-          store.setState({ very: 'awesome' });  // 3, 4
-          // replaces the state using `replaceReducer` twice
-          // first call simply extends the current state
-          // second call puts the original `replicatedReducer` back in place
-          // so at index 3, `preReduction` will already have the updated `very`
+          setReady(true);
+          store.setState({ very: 'awesome' });  // 1, 2
+          // replaces the state using `replaceReducer` and a reducer enhancer
         }, 100);
       },
 
-      preReduction(storeName, state, action) {
+      preReduction(storeKey, state, action) {
         expect(typeof state).toBe('object');
-        expect(state.wow).toBe(wows[index]);    // 0, 3, 6
-        expect(state.very).toBe(verys[index]);  // 0, 3, 6
+        expect(state.wow).toBe(wows[index]);    // 1, 4
+        expect(state.very).toBe(verys[index]);  // 1, 4
         index++;
       },
 
-      postReduction(storeName, state, action) {
+      postReduction(storeKey, state, action) {
         expect(typeof state).toBe('object');
-        expect(state.wow).toBe(wows[index]);    // 1, 4, 7
-        expect(state.very).toBe(verys[index]);  // 1, 4, 7
+        expect(state.wow).toBe(wows[index]);    // 2, 5
+        expect(state.very).toBe(verys[index]);  // 2, 5
         index++;
       }
-    };
+    });
 
-    const storeName = 'testStore';
-    const replication = replicate(storeName, replicator);
+    const storeKey = 'testStore';
+    const replication = replicate(storeKey, replicator);
     const create = compose(replication)(createStore);
-    const store = create(combineReducers(reducers), initialState);  // 0
+    const store = create(combineReducers(reducers), initialState);
     const storeState = store.getState();
 
     expect(typeof store.setState).toBe('function');
     expect(typeof store.setKey).toBe('function');
     expect(typeof storeState).toBe('object');
-    expect(storeState.wow).toBe(wows[index]);     // 2
-    expect(storeState.very).toBe(verys[index]);   // 2
+    expect(storeState.wow).toBe(wows[index]);     // 0
+    expect(storeState.very).toBe(verys[index]);   // 0
     index++;
 
     setTimeout(() => {
       let replicatedState = store.getState();
 
       expect(typeof replicatedState).toBe('object');
-      expect(replicatedState.wow).toBe(wows[index]);    // 5, kept `wow`
-      expect(replicatedState.very).toBe(verys[index]);  // 5, updated `very`
+      expect(replicatedState.wow).toBe(wows[index]);    // 3, kept `wow`
+      expect(replicatedState.very).toBe(verys[index]);  // 3, updated `very`
       index++;
 
-      store.dispatch({ type: SET_WOW, value: 'such test' }); // 6, 7
+      store.dispatch({ type: SET_WOW, value: 'such test' }); // 4, 5
       replicatedState = store.getState();
 
       expect(typeof replicatedState).toBe('object');
-      expect(replicatedState.wow).toBe(wows[index]);    // 8, updated `wow`
-      expect(replicatedState.very).toBe(verys[index]);  // 8, kept `very`
+      expect(replicatedState.wow).toBe(wows[index]);    // 6, updated `wow`
+      expect(replicatedState.very).toBe(verys[index]);  // 6, kept `very`
       index++;
 
       done();
     }, 200);  // after 100ms timeout from async `init`
+  });
+
+  it('should selectKeys', () => {
+    const obj = {
+      a: 1,
+      b: 2,
+      c: 3
+    };
+
+    const selectedAll = selectKeys(null, obj);
+    const selectedNone = selectKeys({}, obj);
+    const selectedOnlyAB = selectKeys({ a: true, b: true }, obj);
+    const selectedNotA = selectKeys({ a: false }, obj);
+
+    expect(selectedAll).toBe(obj);
+    expect(Object.keys(selectedNone).length).toBe(0);
+    expect(selectedOnlyAB.a).toBe(1);
+    expect(selectedOnlyAB.b).toBe(2);
+    expect(selectedOnlyAB.c).toBe(undefined);
+    expect(selectedNotA.a).toBe(undefined);
+    expect(selectedNotA.b).toBe(2);
+    expect(selectedNotA.c).toBe(3);
+  });
+
+  it('should mergeStoresStates', () => {
+    const aReducers = {
+      a(state = 1, action) {
+        switch (action.type) {
+          default:
+            return state;
+        }
+      }
+    };
+
+    const bReducers = {
+      b(state = 2, action) {
+        switch (action.type) {
+          default:
+            return state;
+        }
+      }
+    };
+
+    const stores = {
+      a: createStore(combineReducers(aReducers)),
+      b: createStore(combineReducers(bReducers))
+    };
+
+    const selectedAll = mergeStoresStates()(stores);
+    const selectedA = mergeStoresStates({ a: true })(stores);
+    const selectedNotA = mergeStoresStates({ a: false })(stores);
+
+    expect(selectedAll.a).toBe(1);
+    expect(selectedAll.b).toBe(2);
+    expect(selectedA.a).toBe(1);
+    expect(selectedA.b).toBe(undefined);
+    expect(selectedNotA.a).toBe(undefined);
+    expect(selectedNotA.b).toBe(2);
   });
 });
