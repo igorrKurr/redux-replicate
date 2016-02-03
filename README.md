@@ -28,7 +28,9 @@ This package exports a single function which returns a [`redux`](https://github.
 
 ## Replicators
 
-A replicator should be an object with at least one of the following keys as functions:
+A replicator should be an object of the following shape:
+
+- `keys` - Optional object containing the keys you wish to replicate.  The values should be truthy or falsy which will specify which keys to select or not to select.  If `keys` is undefined, all keys will be replicated.  If it's an empty object, no keys will be replicated.
 
 - `init (String storeKey, Object store, setReady)` - This optional function is called when initializing the store.  You can, for example, use the `store.setState` method here to asynchronously update the state of the store.  If this `init` method exists, the `preReduction` and `postReduction` methods will not be called until `setReady(true)` is called.
 
