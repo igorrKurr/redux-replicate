@@ -3,7 +3,7 @@
 [![build status](https://img.shields.io/travis/loggur/redux-replicate/master.svg?style=flat-square)](https://travis-ci.org/loggur/redux-replicate) [![npm version](https://img.shields.io/npm/v/redux-replicate.svg?style=flat-square)](https://www.npmjs.com/package/redux-replicate)
 [![npm downloads](https://img.shields.io/npm/dm/redux-replicate.svg?style=flat-square)](https://www.npmjs.com/package/redux-replicate)
 
-Store enhancer for [`redux`](https://github.com/rackt/redux) designed to easily replicate stores before and/or after `dispatch`.
+Store enhancer for [`redux`](https://github.com/rackt/redux) designed to easily save/restore/initialize stores' states and replicate actions/states before and/or after reduction.
 
 
 ## Installation
@@ -16,10 +16,10 @@ npm install redux-replicate --save
 ## Usage
 
 ```js
-replicate (String storeKey, Object|Array replicator(s))
+replicate (String storeKey, Function|Array replicatorCreator(s))
 ```
 
-This package exports a single function which returns a [`redux`](https://github.com/rackt/redux) store enhancer.  The first argument should be the name of your store, and the rest of the arguments should be replicators.  The enhancer adds the following 2 methods to the `store` object:
+This package exports a single function which returns a [`redux`](https://github.com/rackt/redux) store enhancer.  The first argument should be the name of your store, and the rest of the arguments should be functions that return replicators.  The enhancer adds the following 2 methods to the `store` object:
 
 - `setState (Object state)` - Extends the current state with `state`, similarly to React's `setState` method.
 
@@ -30,11 +30,11 @@ This package exports a single function which returns a [`redux`](https://github.
 
 A replicator should be an object with at least one of the following keys as functions:
 
-- `init (String storeKey, Object store)` - Called when initializing the store.  You can, for example, use the `store.setState` method here to asynchronously update the state of the store.
+- `init (String storeKey, Object store, setReady)` - This optional function is called when initializing the store.  You can, for example, use the `store.setState` method here to asynchronously update the state of the store.  If this `init` method exists, the `preReduction` and `postReduction` methods will not be called until `setReady(true)` is called.
 
-- `preReduction (String storeKey, Object state, Object action)` - Called immediately before some `action` is dispatched.
+- `preReduction (String storeKey, Object state, Object action)` - Called immediately before some `action` is dispatched throughout the stores `reducer(s)`.
 
-- `postReduction (String storeKey, Object state, Object action)` - Called immediately after some `action` is dispatched.
+- `postReduction (String storeKey, Object state, Object action)` - Called immediately after some `action` is dispatched throughout the stores `reducer(s)`.
 
 
 ## Example replicator
@@ -53,7 +53,7 @@ import localforageReplicator from 'redux-replicate-localforage';
 import { coolMap } from './providers/index';
 import { App } from './components/index';
 
-unshiftEnhancer({ coolMap }, replicate('coolMap', localforageReplicator));
+unshiftEnhancer({ coolMap }, replicate('coolMap', localforageReplicator()));
 
 ReactDOM.render(<App/>, document.getElementById('root'));
 ```
@@ -73,7 +73,7 @@ const initialState = {
 };
 
 const storeKey = 'superCoolStorageUnit';
-const replication = replicate(storeKey, localforageReplicator);
+const replication = replicate(storeKey, localforageReplicator());
 const create = compose(replication)(createStore);
 const store = create(combineReducers(reducers), initialState);
 ```
