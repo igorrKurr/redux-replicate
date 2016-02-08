@@ -35,7 +35,7 @@ export default function replicate (storeKey, replicatorCreators) {
       replaceState = false;
 
       if (!mocked) {
-        nextState = next(reducer, state).getState();
+        nextState = next(reducer, state, true).getState();
         return mergeNextState(state, true);
       }
 
