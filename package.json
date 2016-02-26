@@ -1,6 +1,6 @@
 {
   "name": "redux-replicate",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Store enhancer for `redux` designed to easily replicate stores before and/or after `dispatch`.",
   "main": "./lib/index.js",
   "scripts": {
