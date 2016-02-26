@@ -6,23 +6,22 @@ export { selectKeys, mergeStoresStates };
 /**
  * Store enhancer designed to replicate stores' states before/after reductions.
  *
- * @param {Mixed} storeKey
- * @param {Object|Array} replicatorCreator(s)
+ * @param {String|Function} storeKey
+ * @param {Object|Array} replicator(s)
+ * @param {Object} keys Optional
  * @return {Function}
  * @api public
  */
-export default function replicate (storeKey, replicatorCreators) {
-  if (!Array.isArray(replicatorCreators)) {
-    replicatorCreators = [ replicatorCreators ];
-  }
+export default function replicate(storeKey, replicator, keys) {
+  return next => (reducer, initialState, enhancer) => {
+    const replicators = Array.isArray(replicator)
+      ? replicator.map(Object.create)
+      : [ Object.create(replicator) ];
 
-  return next => (reducer, initialState) => {
     let nextState = null;
-    let replaceState = false;
     const mergeNextState = (state, mocked) => {
       if (
-        !replaceState
-        && state && typeof state === 'object'
+        state && typeof state === 'object'
         && nextState && typeof nextState === 'object'
         && !Array.isArray(state)
         && !Array.isArray(nextState)
@@ -32,10 +31,8 @@ export default function replicate (storeKey, replicatorCreators) {
         state = nextState;
       }
 
-      replaceState = false;
-
       if (!mocked) {
-        nextState = next(reducer, state, true).getState();
+        nextState = next(reducer, state, enhancer).getState();
         return mergeNextState(state, true);
       }
 
@@ -43,12 +40,11 @@ export default function replicate (storeKey, replicatorCreators) {
       return state;
     };
 
-    const replicators = replicatorCreators.map(replicator => replicator());
     const replicatedReducer = (state, action) => {
       for (let replicator of replicators) {
         if (replicator.ready && replicator.preReduction) {
           replicator.preReduction(
-            storeKey, selectKeys(replicator.keys, state), action
+            storeKey, selectKeys(keys, state), action
           );
         }
       }
@@ -61,7 +57,7 @@ export default function replicate (storeKey, replicatorCreators) {
       for (let replicator of replicators) {
         if (replicator.ready && replicator.postReduction) {
           replicator.postReduction(
-            storeKey, selectKeys(replicator.keys, state), action
+            storeKey, selectKeys(keys, state), action
           );
         }
       }
@@ -69,7 +65,7 @@ export default function replicate (storeKey, replicatorCreators) {
       return state;
     };
 
-    const store = next(replicatedReducer, initialState);
+    const store = next(replicatedReducer, initialState, enhancer);
     const initReplicators = () => {
       for (let replicator of replicators) {
         if (replicator.init) {
@@ -78,14 +74,6 @@ export default function replicate (storeKey, replicatorCreators) {
         } else {
           replicator.ready = true;
         }
-      }
-    };
-
-    store.setKey = (key) => {
-      if (key !== storeKey) {
-        storeKey = key;
-        replaceState = true;
-        initReplicators();
       }
     };
 

@@ -23,8 +23,6 @@ This package exports a single function which returns a [`redux`](https://github.
 
 - `setState (Object state)` - Extends the current state with `state`, similarly to React's `setState` method.
 
-- `setKey (String key)` - If the `key` doesn't match the current `storeKey`, sets the `storeKey` and then calls the `init` method for each replicator.  This is useful when you want to use different stores depending on values in other stores.
-
 
 ## Replicators
 

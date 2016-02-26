@@ -53,7 +53,7 @@ describe('redux-replicate', () => {
       'awesome'           // 6: last `expect` verification
     ];
 
-    const replicator = () => ({
+    const replicator = replicate('test', {
       init(storeKey, store, setReady) {
         setTimeout(() => {
           setReady(true);
@@ -77,14 +77,11 @@ describe('redux-replicate', () => {
       }
     });
 
-    const storeKey = 'testStore';
-    const replication = replicate(storeKey, replicator);
-    const create = compose(replication)(createStore);
+    const create = compose(replicator)(createStore);
     const store = create(combineReducers(reducers), initialState);
     const storeState = store.getState();
 
     expect(typeof store.setState).toBe('function');
-    expect(typeof store.setKey).toBe('function');
     expect(typeof storeState).toBe('object');
     expect(storeState.wow).toBe(wows[index]);     // 0
     expect(storeState.very).toBe(verys[index]);   // 0
