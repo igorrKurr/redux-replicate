@@ -2,13 +2,20 @@
  * Extracts keys from some object.  See inline comments below for exact usage.
  *
  * @param {Object} keys
- * @param {Object} obj
+ * @param {Object} object
+ * @param {Function} handler Optional
  * @return {Function} pass the `stores` to this returned function
  * @api public
  */
-const selectKeys = (keys, obj) => {
+const selectKeys = (keys, object, handler = () => {}) => {
   if (!keys) {
-    return obj;
+    for (let key in object) {
+      if (typeof object[key] !== 'undefined') {
+        handler(key, object[key]);
+      }
+    }
+
+    return object;
   }
 
   const selected = {};
@@ -23,15 +30,17 @@ const selectKeys = (keys, obj) => {
   if (keys[firstKey]) {
     // when truthy, extract each key
     for (let key in keys) {
-      if (typeof obj[key] !== 'undefined') {
-        selected[key] = obj[key];
+      if (typeof object[key] !== 'undefined') {
+        selected[key] = object[key];
+        handler(key, object[key]);
       }
     }
   } else {
     // when falsy, extract other keys
-    for (let key in obj) {
+    for (let key in object) {
       if (typeof keys[key] === 'undefined') {
-        selected[key] = obj[key];
+        selected[key] = object[key];
+        handler(key, object[key]);
       }
     }
   }

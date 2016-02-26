@@ -6,22 +6,23 @@ export { selectKeys, mergeStoresStates };
 /**
  * Store enhancer designed to replicate stores' states before/after reductions.
  *
- * @param {String|Function} storeKey
- * @param {Object|Array} replicator(s)
- * @param {Object} keys Optional
+ * @param {Mixed} storeKey
+ * @param {Object|Array} replicatorCreator(s)
  * @return {Function}
  * @api public
  */
-export default function replicate(storeKey, replicator, keys) {
-  return next => (reducer, initialState, enhancer) => {
-    const replicators = Array.isArray(replicator)
-      ? replicator.map(Object.create)
-      : [ Object.create(replicator) ];
+export default function replicate (storeKey, replicatorCreators) {
+  if (!Array.isArray(replicatorCreators)) {
+    replicatorCreators = [ replicatorCreators ];
+  }
 
+  return next => (reducer, initialState, enhancer) => {
     let nextState = null;
-    const mergeNextState = (state, mocked) => {
+    let replaceState = false;
+    const mergeNextState = (state) => {
       if (
-        state && typeof state === 'object'
+        !replaceState
+        && state && typeof state === 'object'
         && nextState && typeof nextState === 'object'
         && !Array.isArray(state)
         && !Array.isArray(nextState)
@@ -31,20 +32,17 @@ export default function replicate(storeKey, replicator, keys) {
         state = nextState;
       }
 
-      if (!mocked) {
-        nextState = next(reducer, state, enhancer).getState();
-        return mergeNextState(state, true);
-      }
-
+      replaceState = false;
       nextState = null;
       return state;
     };
 
+    const replicators = replicatorCreators.map(replicator => replicator());
     const replicatedReducer = (state, action) => {
       for (let replicator of replicators) {
         if (replicator.ready && replicator.preReduction) {
           replicator.preReduction(
-            storeKey, selectKeys(keys, state), action
+            storeKey, selectKeys(replicator.keys, state), action
           );
         }
       }
@@ -57,7 +55,7 @@ export default function replicate(storeKey, replicator, keys) {
       for (let replicator of replicators) {
         if (replicator.ready && replicator.postReduction) {
           replicator.postReduction(
-            storeKey, selectKeys(keys, state), action
+            storeKey, selectKeys(replicator.keys, state), action
           );
         }
       }
@@ -74,6 +72,14 @@ export default function replicate(storeKey, replicator, keys) {
         } else {
           replicator.ready = true;
         }
+      }
+    };
+
+    store.setKey = (key) => {
+      if (key !== storeKey) {
+        storeKey = key;
+        replaceState = true;
+        initReplicators();
       }
     };
 
