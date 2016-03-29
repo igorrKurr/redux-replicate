@@ -197,7 +197,7 @@ import providers from './providers/index';
 // which may be a function of props and context
 
 providers.entry.replication = {
-  reducerKeys: ['time', author', 'entry', 'tags'],
+  reducerKeys: ['time', 'author', 'entry', 'tags'],
   replicator: rethink
 };
 

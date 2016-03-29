@@ -1,7 +1,7 @@
 {
   "name": "redux-replicate",
-  "version": "0.3.3",
-  "description": "Store enhancer for `redux` designed to easily replicate stores before and/or after `dispatch`.",
+  "version": "1.0.0",
+  "description": "Creates a Redux store enhancer designed to replicate actions and states.  Declaratively connect application state to data sources and create efficient, scalable, and reliable software with minimal effort.",
   "main": "./lib/index.js",
   "scripts": {
     "build:lib": "babel src --out-dir lib",
