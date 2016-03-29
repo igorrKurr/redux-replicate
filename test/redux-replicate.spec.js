@@ -1,168 +1,281 @@
 import expect from 'expect';
 import { createStore, combineReducers, compose } from 'redux';
-import replicate, { selectKeys, mergeStoresStates } from '../src/index';
+import replicate from '../src/index';
 
 describe('redux-replicate', () => {
-  it('should replicate', (done) => {
-    const SET_WOW = 'SET_WOW';
-    const SET_VERY = 'SET_VERY';
+  const SET_WOW = 'SET_WOW';
+  const SET_VERY = 'SET_VERY';
+  const SET_AWESOME = 'SET_AWESOME';
 
-    const reducers = {
-      wow(state = '', action) {
-        switch (action.type) {
-          case SET_WOW:
-            return action.value;
+  const actions = {
+    setWow(value) {
+      return { type: SET_WOW, value };
+    },
 
-          default:
-            return state;
-        }
-      },
+    setVery(value) {
+      return { type: SET_VERY, value };
+    },
 
-      very(state = '', action) {
-        switch (action.type) {
-          case SET_VERY:
-            return action.value;
+    setAwesome(value) {
+      return { type: SET_AWESOME, value };
+    }
+  };
 
-          default:
-            return state;
-        }
+  const reducers = {
+    wow(state = '', action) {
+      switch (action.type) {
+        case SET_WOW:
+          return action.value;
+
+        default:
+          return state;
       }
-    };
+    },
 
-    const initialState = {
-      wow: 'such storage',
-      very: 'cool'
-    };
-    let index = 0;
-    const wows = [
-      initialState.wow,   // 0: first `expect` verification
-      initialState.wow,   // 1: `init` called after 100ms, preReduction
-      initialState.wow,   // 2: `init` called after 100ms, postReduction
-      initialState.wow,   // 3: second `expect` verification after 200ms
-      initialState.wow,   // 4: dispatch `SET_WOW`, preReduction
-      'such test',        // 5: dispatch `SET_WOW`, postReduction
-      'such test'         // 6: last `expect` verification
-    ];
-    const verys = [
-      initialState.very,  // 0: first `expect` verification
-      initialState.very,  // 1: `init` called after 100ms, preReduction
-      'awesome',          // 2: `init` called after 100ms, postReduction
-      'awesome',          // 3: second `expect` verification after 200ms
-      'awesome',          // 4: dispatch `SET_WOW`, preReduction
-      'awesome',          // 5: dispatch `SET_WOW`, postReduction
-      'awesome'           // 6: last `expect` verification
-    ];
+    very(state = '', action) {
+      switch (action.type) {
+        case SET_VERY:
+          return action.value;
 
-    const replicator = {
-      init(storeKey, store, setReady) {
-        setTimeout(() => {
-          setReady(true);
-          store.setState({ very: 'awesome' });  // 1, 2
-          // replaces the state using `replaceReducer` and a reducer enhancer
-        }, 100);
-      },
-
-      preReduction(storeKey, select, state, action) {
-        expect(typeof state).toBe('object');
-        expect(state.wow).toBe(wows[index]);    // 1, 4
-        expect(state.very).toBe(verys[index]);  // 1, 4
-        index++;
-      },
-
-      postReduction(storeKey, select, previousState, state, action) {
-        expect(typeof state).toBe('object');
-        expect(state.wow).toBe(wows[index]);    // 2, 5
-        expect(state.very).toBe(verys[index]);  // 2, 5
-        index++;
+        default:
+          return state;
       }
-    };
+    },
 
-    const replication = replicate('test', replicator);
-    const create = compose(replication)(createStore);
-    const store = create(combineReducers(reducers), initialState);
-    const storeState = store.getState();
+    awesome(state = '', action) {
+      switch (action.type) {
+        case SET_AWESOME:
+          return action.value;
 
-    expect(typeof store.setState).toBe('function');
-    expect(typeof storeState).toBe('object');
-    expect(storeState.wow).toBe(wows[index]);     // 0
-    expect(storeState.very).toBe(verys[index]);   // 0
-    index++;
+        default:
+          return state;
+      }
+    }
+  };
 
+  const initialState = {
+    wow: 'such replication',
+    very: 'useful',
+    awesome: 'ness'
+  };
+
+  const customInitialState = {
+    wow: 'such custom initialization'
+  };
+
+  const databaseState = {
+    'test/wow': 'such database',
+    'test/very': 'intuitive async initialization',
+    'test/awesome': 'sauce'
+  };
+
+  let lastAction = null;
+  let onStateChangeCalls = 0;
+  let postReductionCalls = 0;
+  let customInitializationCalls = 0;
+  let readyCallbackCalls = 0;
+
+  const replicator = {
+    getInitialState(key, setState) {
+      setTimeout(() => {
+        setState(databaseState[key]);
+      }, 500);
+    },
+
+    onStateChange(key, state, nextState, action) {
+      databaseState[key] = nextState;
+      onStateChangeCalls++;
+    },
+
+    postReduction(key, state, nextState, action) {
+      lastAction = action;
+      postReductionCalls++;
+    }
+  };
+
+  const customInitialization = next => (reducer, initialState, enhancer) => {
+    const store = next(reducer, initialState, enhancer);
+
+    customInitializationCalls++;
+    store.dispatch(actions.setWow(customInitialState.wow));
+
+    return store;
+  };
+
+  const readyCallback = () => (readyCallbackCalls++);
+
+  const replication = replicate('test', ['wow', 'very'], replicator);
+  const create = compose(replication, customInitialization)(createStore);
+  const store = create(combineReducers(reducers), initialState);
+
+  it('should initialize the store as usual, including custom initialization via some enhancer', () => {
+    const state = store.getState();
+    expect(typeof state).toBe('object');
+    expect(state.wow).toBe(customInitialState.wow);
+    expect(state.very).toBe(initialState.very);
+    expect(state.awesome).toBe(initialState.awesome);
+  });
+
+  it('should add onReady method to store', () => {
+    store.onReady(readyCallback);
+  });
+
+  it('should add setState method to store, which merges next state if reducer keys are specified', () => {
+    store.setState({ wow: 'wow', very: 'very' });
+
+    const state = store.getState();
+    expect(typeof state).toBe('object');
+    expect(state.wow).toBe(customInitialState.wow);
+    expect(state.very).toBe('very');
+    expect(state.awesome).toBe(initialState.awesome);
+  });
+
+  it('should not call postReduction/onStateChange until replicator has initialized', () => {
+    const wow = 'such replication (not yet replicated)';
+    const very = 'easy right? (not yet replicated)';
+    let state = null;
+
+    store.dispatch(actions.setWow(wow));
+    store.dispatch(actions.setVery(very));
+
+    state = store.getState();
+    expect(typeof state).toBe('object');
+    expect(state.wow).toBe(wow);
+    expect(state.very).toBe(very);
+    expect(onStateChangeCalls).toBe(0);
+    expect(postReductionCalls).toBe(0);
+
+    store.setState(initialState);
+    state = store.getState();
+    expect(typeof state).toBe('object');
+    expect(state.wow).toBe(customInitialState.wow);
+    expect(state.very).toBe(initialState.very);
+    expect(state.awesome).toBe(initialState.awesome);
+    expect(onStateChangeCalls).toBe(0);
+    expect(postReductionCalls).toBe(0);
+  });
+
+  it('should not be ready yet', () => {
+    expect(store.initializedReplication).toBe(false);
+    expect(readyCallbackCalls).toBe(0);
+  });
+
+  it('should mock store initialization until replication initialized', () => {
+    // happens whenever store is initialized or setState is called, so 3 so far
+    expect(customInitializationCalls).toBe(3);
+  });
+
+  it('should have reinitialized via async data source after 500ms', done => {
     setTimeout(() => {
-      let replicatedState = store.getState();
+      const state = store.getState();
 
-      expect(typeof replicatedState).toBe('object');
-      expect(replicatedState.wow).toBe(wows[index]);    // 3, kept `wow`
-      expect(replicatedState.very).toBe(verys[index]);  // 3, updated `very`
-      index++;
-
-      store.dispatch({ type: SET_WOW, value: 'such test' }); // 4, 5
-      replicatedState = store.getState();
-
-      expect(typeof replicatedState).toBe('object');
-      expect(replicatedState.wow).toBe(wows[index]);    // 6, updated `wow`
-      expect(replicatedState.very).toBe(verys[index]);  // 6, kept `very`
-      index++;
+      expect(typeof state).toBe('object');
+      expect(state.wow).toBe(customInitialState.wow);
+      expect(state.very).toBe(databaseState['test/very']);
+      expect(onStateChangeCalls).toBe(0);
+      expect(postReductionCalls).toBe(0);
 
       done();
-    }, 200);  // after 100ms timeout from async `init`
+    }, 520);
   });
 
-  it('should selectKeys', () => {
-    const obj = {
-      a: 1,
-      b: 2,
-      c: 3
-    };
+  it('should have reinitialized only the specified reducer keys', done => {
+    setTimeout(() => {
+      const state = store.getState();
 
-    const selectedAll = selectKeys(null, obj);
-    const selectedNone = selectKeys({}, obj);
-    const selectedOnlyAB = selectKeys({ a: true, b: true }, obj);
-    const selectedNotA = selectKeys({ a: false }, obj);
+      expect(state.awesome).toBe(initialState.awesome);
 
-    expect(selectedAll).toBe(obj);
-    expect(Object.keys(selectedNone).length).toBe(0);
-    expect(selectedOnlyAB.a).toBe(1);
-    expect(selectedOnlyAB.b).toBe(2);
-    expect(selectedOnlyAB.c).toBe(undefined);
-    expect(selectedNotA.a).toBe(undefined);
-    expect(selectedNotA.b).toBe(2);
-    expect(selectedNotA.c).toBe(3);
+      done();
+    }, 520);
   });
 
-  it('should mergeStoresStates', () => {
-    const aReducers = {
-      a(state = 1, action) {
-        switch (action.type) {
-          default:
-            return state;
-        }
-      }
-    };
+  it('should be ready now', done => {
+    setTimeout(() => {
+      expect(store.initializedReplication).toBe(true);
+      expect(readyCallbackCalls).toBe(1);
 
-    const bReducers = {
-      b(state = 2, action) {
-        switch (action.type) {
-          default:
-            return state;
-        }
-      }
-    };
+      done();
+    }, 520);
+  });
 
-    const stores = {
-      a: createStore(combineReducers(aReducers)),
-      b: createStore(combineReducers(bReducers))
-    };
+  it('should call postReduction upon every action', done => {
+    setTimeout(() => {
+      const wow = 'such replication';
+      const very = 'easy right?';
+      let action = null;
 
-    const selectedAll = mergeStoresStates()(stores);
-    const selectedA = mergeStoresStates({ a: true })(stores);
-    const selectedNotA = mergeStoresStates({ a: false })(stores);
+      action = actions.setWow(wow);
+      store.dispatch(action);
+      expect(lastAction).toBe(action);
+      expect(postReductionCalls).toBe(1);
 
-    expect(selectedAll.a).toBe(1);
-    expect(selectedAll.b).toBe(2);
-    expect(selectedA.a).toBe(1);
-    expect(selectedA.b).toBe(undefined);
-    expect(selectedNotA.a).toBe(undefined);
-    expect(selectedNotA.b).toBe(2);
+      action = actions.setVery(very);
+      store.dispatch(action);
+      expect(lastAction).toBe(action);
+      expect(postReductionCalls).toBe(2);
+
+      done();
+    }, 520);
+  });
+
+  it('should call onStateChange only when state has changed', done => {
+    setTimeout(() => {
+      const wow = 'such replication';
+      const very = 'easy amirite?!?!?!';
+
+      // from previous test: setWow, setVery = 2 calls so far
+      store.dispatch(actions.setWow(wow));
+      expect(onStateChangeCalls).toBe(2);   // wow was unchanged
+
+      store.dispatch(actions.setVery(very));
+      expect(onStateChangeCalls).toBe(3);
+
+      expect(databaseState['test/wow']).toBe(wow);
+      expect(databaseState['test/very']).toBe(very);
+
+      done();
+    }, 520);
+  });
+
+  it('should not call onStateChange for unspecified reducer keys', done => {
+    setTimeout(() => {
+      const awesome = 'jawesome';
+
+      store.dispatch(actions.setAwesome(awesome));
+      expect(onStateChangeCalls).toBe(3);   // still 3
+
+      done();
+    }, 520);
+  });
+
+  it('should call postReduction once per reduction but onStateChange once per changed reducer key', done => {
+    setTimeout(() => {
+      store.setState({
+        wow: 'zers',
+        awesome: '!!!!!!!!!!!!!'
+      });
+
+      // setWow, setVery, setWow, setVery, setAwesome, setState = 6
+      expect(postReductionCalls).toBe(6);
+
+      // changed wow, 1
+      // changed very, 2
+      // did not change wow
+      // changed very, 3
+      // changed awesome but not replicated
+      // changed wow, 4
+      // changed awesome but not replicated
+      expect(onStateChangeCalls).toBe(4);
+
+      done();
+    }, 520);
+  });
+
+  it('should have only run custom enhancer one more time', done => {
+    setTimeout(() => {
+      expect(customInitializationCalls).toBe(4);
+
+      done();
+    }, 520);
   });
 });

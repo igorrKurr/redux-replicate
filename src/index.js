@@ -1,33 +1,94 @@
-import selectKeys from './selectKeys';
-import mergeStoresStates from './mergeStoresStates';
-
-export { selectKeys, mergeStoresStates };
-
-export const INIT_REPLICATORS = '@@redux-replicate/INIT_REPLICATORS';
+export const defaultGetKey = (key, reducerKey) => (`${key}/${reducerKey}`);
 
 /**
- * Store enhancer designed to replicate stores' states before/after reductions.
+ * Creates a Redux store enhancer designed to replicate actions and states.
  *
- * @param {String|Function} storeKey
+ * @param {Mixed} key
+ * @param {Array|Boolean} reducerKeys Optional
  * @param {Object|Array} replicator(s)
  * @return {Function}
  * @api public
  */
-export default function replicate(storeKey, replicator) {
-  return next => (reducer, initialState, enhancer) => {
-    const create = r => (typeof r === 'function' ? r() : Object.create(r));
-    const replicators = Array.isArray(replicator)
-      ? replicator.map(create)
-      : [ create(replicator) ];
+export default function replicate(key, reducerKeys, replicator) {
+  if (arguments.length === 2) {
+    replicator = reducerKeys;
+    reducerKeys = false;
+  }
 
+  if (!Array.isArray(replicator)) {
+    replicator = [ replicator ];
+  }
+
+  return next => (reducer, initialState, enhancer) => {
+    let store = null;
     let nextState = null;
-    const mergeNextState = (state, mocked) => {
-      if (
-        state && typeof state === 'object'
-        && nextState && typeof nextState === 'object'
-        && !Array.isArray(state)
-        && !Array.isArray(nextState)
-      ) {
+    const replicators = replicator.map(Object.create);
+    const readyCallbacks = [];
+
+    function getInitialState() {
+      let initialState = reducerKeys ? {} : null;
+      let setInitialState = false;
+      let semaphore = replicators.length;
+
+      function clear() {
+        if (--semaphore === 0) {
+          if (setInitialState) {
+            store.setState(initialState);
+          }
+
+          while (readyCallbacks.length) {
+            readyCallbacks.shift()(key, store);
+          }
+        }
+      }
+
+      if (reducerKeys) {
+        if (reducerKeys === true) {
+          reducerKeys = Object.keys(store.getState());
+        }
+
+        semaphore = semaphore * reducerKeys.length;
+
+        for (let replicator of replicators) {
+          let { getKey = defaultGetKey } = replicator;
+
+          if (replicator.getInitialState) {
+            for (let reducerKey of reducerKeys) {
+              replicator.getInitialState(getKey(key, reducerKey), state => {
+                if (typeof state !== 'undefined') {
+                  initialState[reducerKey] = state;
+                  setInitialState = true;
+                }
+
+                clear();
+              });
+            }
+          } else {
+            for (let reducerKey of reducerKeys) {
+              clear();
+            }
+          }
+        }
+      } else {
+        for (let replicator of replicators) {
+          if (replicator.getInitialState) {
+            replicator.getInitialState(key, state => {
+              if (typeof state !== 'undefined') {
+                initialState = state;
+                setInitialState = true;
+              }
+
+              clear();
+            });
+          } else {
+            clear();
+          }
+        }
+      }
+    }
+
+    function mergeNextState(state, mocked = store.initializedReplication) {
+      if (reducerKeys) {
         state = { ...state, ...nextState };
       } else {
         state = nextState;
@@ -40,150 +101,70 @@ export default function replicate(storeKey, replicator) {
 
       nextState = null;
       return state;
-    };
+    }
 
-    const createSelect = (state, action, setValue, done) => {
-      /**
-       * @param {Function|Object} selector Passed to replicator from app config
-       * @param {Function} handler From replicator
-       * @param {Function} callback From replicator
-       */
-      return (selector, handler, callback) => {
-        const complete = () => {
-          if (callback) {
-            callback();
-          }
+    function replicatedReducer(state, action) {
+      const actualNextState = nextState
+        ? reducer(mergeNextState(state), action)
+        : reducer(state, action);
 
-          if (done) {
-            done();
-          }
-        };
+      if (store && store.initializedReplication) {
+        for (let replicator of replicators) {
+          let { getKey = defaultGetKey } = replicator;
 
-        if (typeof selector === 'function') {
-          const selectedState = selector(storeKey, state, action);
-
-          for (let key in selectedState) {
-            handler(key, selectedState[key], setValue);
-          }
-
-          complete();
-        } else {
-          selectKeys(selector, state, (key, value, clear) => {
-            handler(key, value, (key, value) => {
-              if (setValue) {
-                setValue(key, value);
-              }
-
-              clear();
-            });
-          }, complete);
-        }
-      };
-    };
-
-    const replicatedReducer = (state, action) => {
-      let select = createSelect(state, action);
-      const previousState = state;
-
-      for (let replicator of replicators) {
-        if (replicator.ready && replicator.preReduction) {
-          replicator.preReduction(
-            storeKey, select, state, action
-          );
-        }
-      }
-
-      if (nextState) {
-        state = mergeNextState(state);
-      }
-      state = reducer(state, action);
-      select = createSelect(state, action);
-
-      for (let replicator of replicators) {
-        if (replicator.ready && replicator.postReduction) {
-          replicator.postReduction(
-            storeKey, select, previousState, state, action
-          );
-        }
-      }
-
-      return state;
-    };
-
-    const store = next(replicatedReducer, initialState, enhancer);
-    const dispatch = store.dispatch;
-    const pendingActions = [];
-    const readyCallbacks = [];
-    const initReplicators = () => {
-      const initState = {};
-      const state = store.getState();
-      const action = { type: INIT_REPLICATORS };
-
-      let semaphore = replicators.length;
-      const clear = () => {
-        if (--semaphore === 0) {
-          if (Object.keys(initState).length) {
-            store.setState(initState);
-          }
-
-          while (readyCallbacks.length) {
-            readyCallbacks.shift()();
-          }
-        }
-      };
-
-      for (let replicator of replicators) {
-        replicator.ready = false;
-
-        if (replicator.init) {
-          replicator.init(
-            storeKey,
-            store,
-            createSelect(
-              state,
-              action,
-              (key, value) => {
-                if (typeof value !== 'undefined') {
-                  initState[key] = value;
+          if (replicator.onStateChange) {
+            if (reducerKeys) {
+              for (let reducerKey of reducerKeys) {
+                if (state[reducerKey] !== actualNextState[reducerKey]) {
+                  replicator.onStateChange(
+                    getKey(key, reducerKey),
+                    state[reducerKey],
+                    actualNextState[reducerKey],
+                    action
+                  );
                 }
-              },
-              clear
-            )
-          );
-        } else {
-          clear();
+              }
+            } else if (state !== actualNextState) {
+              replicator.onStateChange(
+                key, state, actualNextState, action
+              );
+            }
+          }
+
+          if (replicator.postReduction) {
+            replicator.postReduction(
+              key, state, actualNextState, action
+            );
+          }
         }
       }
+
+      return actualNextState;
+    }
+
+    store = next(replicatedReducer, initialState, enhancer);
+    store.initializedReplication = false;
+
+    store.onReady = readyCallback => {
+      readyCallbacks.push(readyCallback);
     };
 
-    if (!store.onReady) {
-      store.onReady = callback => {
-        readyCallbacks.push(callback);
-      };
+    for (let replicator of replicators) {
+      if (replicator.onReady) {
+        store.onReady(replicator.onReady);
+      }
     }
 
     store.onReady(() => {
-      for (let replicator of replicators) {
-        replicator.ready = true;
-      }
-
-      store.dispatch = dispatch;
-      while (pendingActions.length) {
-        store.dispatch(pendingActions.shift());
-      }
+      store.initializedReplication = true;
     });
 
-    store.dispatch = (action) => {
-      pendingActions.push(action);
-      return action;
-    };
-
-    store.setState = (state) => {
+    store.setState = state => {
       nextState = state;
       store.replaceReducer(replicatedReducer);
     };
 
-    initReplicators();
+    getInitialState();
 
     return store;
   };
