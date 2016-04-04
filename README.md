@@ -6,11 +6,24 @@
 Creates a [Redux](https://github.com/rackt/redux) store enhancer designed to replicate actions and states.
 
 
+## Table of contents
+
+1.  [Installation](#installation)
+2.  [Why?](#why)
+3.  [Usage](#usage)
+4.  [Replicators](#replicators)
+5.  [Store modifications](#store-modifications)
+6.  [Example replicator](#example-replicator)
+7.  [Example using `react-redux-provide`](#example-using-react-redux-provide)
+8.  [Example using `compose`](#example-using-compose)
+
+
 ## Installation
 
 ```
 npm install redux-replicate --save
 ```
+
 
 ## Why?
 
