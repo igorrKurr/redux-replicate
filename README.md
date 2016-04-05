@@ -204,7 +204,7 @@ Replication and providers work great together!  Providers help you fully reap th
 
 import rethink from 'redux-replicate-rethink';
 import socket from 'redux-replicate-socket';
-import providers from './providers/index';
+import * as providers from './providers/index';
 
 // replication `key` defaults to each provider instance's key,
 // which may be a function of props and context
