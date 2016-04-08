@@ -39,6 +39,8 @@ You can:
 
 * Automatically initialize state from some data source, synchronously or asynchronously.
 
+* Give the server full authority over the initial state and/or allow the client to override the initial state with their own values.
+
 * Instantly add real-time functionality to keep clients in sync with each other.
 
 * Instantly add or remove any number of data sources (databases, API, sockets, etc.).
@@ -57,9 +59,11 @@ Typically a string, but this can be anything.  It's passed to your replicators s
 
 ### reducerKeys
 
-Optional boolean value or array of strings.  This is helpful (and recommended!) if you're using Redux's `combineReducers` function (or similar) and want to replicate changes to individual keys within the store's state object, rather than the entire state tree.
+Optional boolean value, array of strings, or object containing boolean values.  This is helpful (and recommended!) if you're using Redux's `combineReducers` function (or similar) and want to replicate changes to individual keys within the store's state object, rather than the entire state tree.
 
 If an array, it will replicate only the keys within the array.
+
+If an object, it will be compared to the `clientState` (see below).  All keys within the object will be replicated, but only the keys with truthy values will be initialized.  This is useful if you want the server to be able to specify a custom initial state while also allowing the client to override the server's initial state.
 
 If `true`, it will replicate all keys.
 
@@ -68,6 +72,10 @@ If either `false` or omitted, it will replicate the entire state object *without
 ### replicator(s)
 
 Either a single replicator or an array of replicators.  See the [Replicators](#replicators) section below.
+
+### clientState
+
+Optional object used when determining which `reducerKeys` should be initialized on the client.  This object should be the initial state provided to the client by the server.  If no `clientState`, the client will be able to fully override the initial state with their own replicated values.
 
 
 ## Replicators
@@ -101,7 +109,7 @@ function getKey(key, reducerKey) {
 
 Optional function to set the store's initial state, synchronously or asynchronously.
 
-If using `reducerKeys`, this function is called once per `reducerKey`.
+If using `reducerKeys`, this function is called once per initializable `reducerKey`.
 
 If not using `reducerKeys`, this function is called only once.
 

@@ -4,12 +4,13 @@ export const defaultGetKey = (key, reducerKey) => (`${key}/${reducerKey}`);
  * Creates a Redux store enhancer designed to replicate actions and states.
  *
  * @param {Mixed} key
- * @param {Array|Boolean} reducerKeys Optional
+ * @param {Boolean|Array|Object} reducerKeys Optional
  * @param {Object|Array} replicator(s)
+ * @param {Object} clientState Optional
  * @return {Function}
  * @api public
  */
-export default function replicate(key, reducerKeys, replicator) {
+export default function replicate(key, reducerKeys, replicator, clientState) {
   if (arguments.length === 2) {
     replicator = reducerKeys;
     reducerKeys = false;
@@ -43,17 +44,46 @@ export default function replicate(key, reducerKeys, replicator) {
       }
 
       if (reducerKeys) {
+        let initialReducerKeys = reducerKeys;
+
         if (reducerKeys === true) {
           reducerKeys = Object.keys(store.getState());
+          initialReducerKeys = reducerKeys;
         }
 
-        semaphore = semaphore * reducerKeys.length;
+        // here we want the client to get only the undefined initial states
+        if (clientState) {
+          initialReducerKeys = [];
+
+          if (Array.isArray(reducerKeys)) {
+            for (let reducerKey of reducerKeys) {
+              if (typeof clientState[reducerKey] === 'undefined') {
+                initialReducerKeys.push(reducerKey);
+              }
+            }
+          } else {
+            // if reducerKeys is an object, truthy values indicate keys that
+            // can be overridden by the client
+            for (let reducerKey in reducerKeys) {
+              if (
+                reducerKeys[reducerKey]
+                && typeof clientState[reducerKey] === 'undefined'
+              ) {
+                initialReducerKeys.push(reducerKey);
+              }
+            }
+
+            reducerKeys = Object.keys(reducerKeys);
+          }
+        }
+
+        semaphore = semaphore * initialReducerKeys.length;
 
         for (let replicator of replicators) {
           let { getKey = defaultGetKey } = replicator;
 
           if (replicator.getInitialState) {
-            for (let reducerKey of reducerKeys) {
+            for (let reducerKey of initialReducerKeys) {
               replicator.getInitialState(getKey(key, reducerKey), state => {
                 if (typeof state !== 'undefined') {
                   initialState[reducerKey] = state;
@@ -64,7 +94,7 @@ export default function replicate(key, reducerKeys, replicator) {
               });
             }
           } else {
-            for (let reducerKey of reducerKeys) {
+            for (let reducerKey of initialReducerKeys) {
               clear();
             }
           }
