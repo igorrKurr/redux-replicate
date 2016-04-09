@@ -79,25 +79,30 @@ export default function replicate(key, reducerKeys, replicator, clientState) {
 
         semaphore = semaphore * initialReducerKeys.length;
 
-        for (let replicator of replicators) {
-          let { getKey = defaultGetKey } = replicator;
+        if (semaphore) {
+          for (let replicator of replicators) {
+            let { getKey = defaultGetKey } = replicator;
 
-          if (replicator.getInitialState) {
-            for (let reducerKey of initialReducerKeys) {
-              replicator.getInitialState(getKey(key, reducerKey), state => {
-                if (typeof state !== 'undefined') {
-                  initialState[reducerKey] = state;
-                  setInitialState = true;
-                }
+            if (replicator.getInitialState) {
+              for (let reducerKey of initialReducerKeys) {
+                replicator.getInitialState(getKey(key, reducerKey), state => {
+                  if (typeof state !== 'undefined') {
+                    initialState[reducerKey] = state;
+                    setInitialState = true;
+                  }
 
+                  clear();
+                });
+              }
+            } else {
+              for (let reducerKey of initialReducerKeys) {
                 clear();
-              });
-            }
-          } else {
-            for (let reducerKey of initialReducerKeys) {
-              clear();
+              }
             }
           }
+        } else {
+          semaphore = 1;
+          clear();
         }
       } else {
         for (let replicator of replicators) {
