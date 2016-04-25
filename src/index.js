@@ -155,20 +155,21 @@ export default function replicate(key, reducerKeys, replicator, clientState) {
                     getKey(key, reducerKey),
                     state[reducerKey],
                     actualNextState[reducerKey],
-                    action
+                    action,
+                    store
                   );
                 }
               }
             } else if (state !== actualNextState) {
               replicator.onStateChange(
-                key, state, actualNextState, action
+                key, state, actualNextState, action, store
               );
             }
           }
 
           if (replicator.postReduction) {
             replicator.postReduction(
-              key, state, actualNextState, action
+              key, state, actualNextState, action, store
             );
           }
         }

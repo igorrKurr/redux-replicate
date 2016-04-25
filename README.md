@@ -146,7 +146,7 @@ function onReady(key, store) {
 }
 ```
 
-### onStateChange (String key, Mixed state, Mixed nextState, Object action)
+### onStateChange (String key, Mixed state, Mixed nextState, Object action, Object store)
 
 Optional function to replicate the state and/or the action upon state changes.  This is called only after initialization.
 
@@ -157,14 +157,14 @@ If not using `reducerKeys`, this function is called only once.
 Example (from [`redux-replicate-localforage`](https://github.com/loggur/redux-replicate-localforage)):
 
 ```js
-function onStateChange(key, state, nextState, action) {
+function onStateChange(key, state, nextState, action, store) {
   localforage
     .setItem(key, stringify(nextState))
     .catch(warn);
 }
 ```
 
-### postReduction (String key, Mixed state, Mixed nextState, Object action)
+### postReduction (String key, Mixed state, Mixed nextState, Object action, Object store)
 
 Optional function to replicate the state and/or the action upon any reduction, regardless of whether or not the store's state has changed.  This is called only after initialization.  If you want to replicate actions, this is the place to do it.
 
@@ -173,7 +173,7 @@ This function is only called once per reduction, as the `key` passed to this fun
 Example:
 
 ```js
-function postReduction(key, state, nextState, action) {
+function postReduction(key, state, nextState, action, store) {
   if (state !== nextState) {
     socket.emit('action', { key, action });
   }
