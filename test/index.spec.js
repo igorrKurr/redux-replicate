@@ -75,19 +75,31 @@ describe('redux-replicate', () => {
   let customInitializationCalls = 0;
   let readyCallbackCalls = 0;
 
+  function getItemKey(key, reducerKey) {
+    if (reducerKey) {
+      return `${key}/${reducerKey}`;
+    } else {
+      return key;
+    }
+  }
+
   const replicator = {
-    getInitialState(key, setState) {
+    getInitialState({ key, reducerKey }, setState) {
+      const itemKey = getItemKey(key, reducerKey);
+
       setTimeout(() => {
-        setState(databaseState[key]);
+        setState(databaseState[itemKey]);
       }, 500);
     },
 
-    onStateChange(key, state, nextState, action) {
-      databaseState[key] = nextState;
+    onStateChange({ key, reducerKey }, state, nextState, action, store) {
+      const itemKey = getItemKey(key, reducerKey);
+
+      databaseState[itemKey] = nextState;
       onStateChangeCalls++;
     },
 
-    postReduction(key, state, nextState, action) {
+    postReduction({ key, reducerKey }, state, nextState, action, store) {
       lastAction = action;
       postReductionCalls++;
     }
@@ -104,7 +116,12 @@ describe('redux-replicate', () => {
 
   const readyCallback = () => (readyCallbackCalls++);
 
-  const replication = replicate('test', ['wow', 'very'], replicator);
+  const replication = replicate({
+    key: 'test',
+    reducerKeys: ['wow', 'very'],
+    replicator
+  });
+
   const create = compose(replication, customInitialization)(createStore);
   const store = create(combineReducers(reducers), initialState);
 

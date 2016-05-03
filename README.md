@@ -51,11 +51,11 @@ If this is new to you, see Wikipedia's [State machine replication](https://en.wi
 
 ## Usage
 
-Call the `replicate` function (default export) with the following arguments to create a store enhancer.
+Call the `replicate` function (default export) with the following options (as keys within an object) to create a store enhancer.
 
 ### key
 
-Typically a string, but this can be anything.  It's passed to your replicators so they know where and/or how to replicate data.  If you're using `reducerKeys`, each `reducerKey` is combined with this `key` when calling a replicator's `getInitialState` and `onStateChange` methods.  If necessary, you can customize the way the `key` and `reducerKey` are combined (see the [Replicators](#replicators) section below).
+Typically a string, but this can be anything.  It's passed to your replicators so they know where and/or how to replicate data.  If you're using `reducerKeys`, each `reducerKey` is included in an object with this `key` when calling a replicator's `getInitialState` and `onStateChange` methods.
 
 ### reducerKeys
 
@@ -67,7 +67,19 @@ If an object, it will be compared to the `clientState` (see below).  All keys wi
 
 If `true`, it will replicate all keys.
 
-If either `false` or omitted, it will replicate the entire state object *without* combining the `key` argument with any state keys.
+If either `false` or omitted, it will replicate the entire state object when calling `getInitialState` and `onStateChange` - i.e., it won't iterate over each `reducerKey` even when `combineReducers` is used.
+
+### queryable
+
+Optional boolean value or array of strings used for specifying whether or not the `key` (or `reducerKeys` if used) should be queryable by value.  Defaults to `false`.
+
+If `true` and not using `reducerKeys`, then the `key` will be queryable by value (current state).
+
+If `true` and using `reducerKeys`, then each `reducerKey` will be queryable by value (current state).
+
+An array specifies which `reducerKeys` are queryable by value (current state).
+
+If `false`, values (current states) will not be queryable.
 
 ### replicator(s)
 
@@ -86,6 +98,8 @@ Replicators can:
 
 * Save state changes to data sources.
 
+* Allow current states to be queryable.
+
 * Send actions to clients, other servers, etc.
 
 * Be packaged and easily reusable!
@@ -93,19 +107,7 @@ Replicators can:
 
 A replicator is a plain object of the following shape.
 
-### getKey (Mixed key, String reducerKey)
-
-Optional function to determine the key to be passed to `getInitialState` and `onStateChange`.  Only called when using `reducerKeys`.
-
-Defaults to:
-
-```js
-function getKey(key, reducerKey) {
-  return `${key}/${reducerKey}`;
-}
-```
-
-### getInitialState (String key, Function setState)
+### getInitialState (Object { Mixed key, Optional String reducerKey }, Function setState)
 
 Optional function to set the store's initial state, synchronously or asynchronously.
 
@@ -118,19 +120,30 @@ The `setState` function must be called for the store to finish initializing, reg
 Example (from [`redux-replicate-localforage`](https://github.com/loggur/redux-replicate-localforage)):
 
 ```js
-function getInitialState(key, setState) {
+function getItemKey(key, reducerKey) {
+  if (reducerKey) {
+    return `${key}/${reducerKey}`;
+  } else {
+    return key;
+  }
+}
+
+function getInitialState({ key, reducerKey }, setState) {
+  const itemKey = getItemKey(key, reducerKey);
+
   localforage
-    .getItem(key)
+    .getItem(itemKey)
     .then(state => {
       setState(parse(state));
-    }, error => {
+    })
+    .catch(error => {
       warn(error);
       setState();
     });
 }
 ```
 
-### onReady (String key, Object store)
+### onReady (Mixed key, Object store)
 
 Optional function called after initialization.
 
@@ -146,7 +159,7 @@ function onReady(key, store) {
 }
 ```
 
-### onStateChange (String key, Mixed state, Mixed nextState, Object action, Object store)
+### onStateChange (Object { Mixed key, Optional String reducerKey, Optional Boolean queryable }, Mixed state, Mixed nextState, Object action, Object store)
 
 Optional function to replicate the state and/or the action upon state changes.  This is called only after initialization.
 
@@ -157,18 +170,27 @@ If not using `reducerKeys`, this function is called only once.
 Example (from [`redux-replicate-localforage`](https://github.com/loggur/redux-replicate-localforage)):
 
 ```js
-function onStateChange(key, state, nextState, action, store) {
+function onStateChange({ key, reducerKey, queryable }, state, nextState, action, store) {
+  const itemKey = getItemKey(key, reducerKey);
+
   localforage
-    .setItem(key, stringify(nextState))
+    .setItem(itemKey, stringify(nextState))
     .catch(warn);
+
+  if (queryable) {
+    // in the case of simple key-value stores like localforage where the
+    // ability to query by value doesn't come with it, you can store a
+    // custom map of values to keys to be used for querying...
+    // in most cases you won't have to implement this functionality though :)
+  }
 }
 ```
 
-### postReduction (String key, Mixed state, Mixed nextState, Object action, Object store)
+### postReduction (Mixed key, Mixed state, Mixed nextState, Object action, Object store)
 
 Optional function to replicate the state and/or the action upon any reduction, regardless of whether or not the store's state has changed.  This is called only after initialization.  If you want to replicate actions, this is the place to do it.
 
-This function is only called once per reduction, as the `key` passed to this function is not combined with any `reducerKey`.  A quick `state !== nextState` check here would let you know if any change has taken place, regardless of whether or not you're using `reducerKeys`.
+This function is only called once per reduction.  A quick `state !== nextState` check here would let you know if any change has taken place, regardless of whether or not you're using `reducerKeys`.
 
 Example:
 
@@ -177,6 +199,31 @@ function postReduction(key, state, nextState, action, store) {
   if (state !== nextState) {
     socket.emit('action', { key, action });
   }
+}
+```
+
+### handleQuery (Mixed query, Function setResult)
+
+Optional function to handle some query.  The `query` argument can be specific to your implementation, but it's best to follow convention.  In the future, we may solidify a standard for this.
+
+If using `reducerKeys`, the `query` argument should typically be an object containing `reducerKey` to state (value) pairs along with any other options the replicator might use when handling the query.
+
+If not using `reducerKeys`, the `query` argument should typically be the entire state.
+
+The `setResult` function accepts an `error` argument and a `result` argument.
+
+Example:
+
+```js
+function handleQuery(query, setResult) {
+  database
+    .find(query)
+    .then(result => {
+      setResult(null, result);
+    })
+    .catch(error => {
+      setResult(error);
+    });
 }
 ```
 
@@ -248,7 +295,9 @@ const initialState = {
 };
 
 const key = 'superCoolStorageUnit';
-const replication = replicate(key, true, localforage);
+const reducerKeys = true;
+const replicator = localforage;
+const replication = replicate({ key, reducerKeys, replicator });
 const create = compose(replication)(createStore);
 const store = create(combineReducers(reducers), initialState);
 ```
