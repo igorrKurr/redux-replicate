@@ -28,11 +28,12 @@ export default function replicate({
     replicator = [ replicator ];
   }
 
+  // TODO: clean this up a bit; it probably looks like one big blob of code
+  // but it's actually pretty straightforward!
   return next => (reducer, initialState, enhancer) => {
     let store = null;
     let nextState = null;
     const replicators = replicator.map(Object.create);
-    const readyCallbacks = [];
 
     function getInitialState() {
       let initialState = reducerKeys ? {} : null;
@@ -45,8 +46,10 @@ export default function replicate({
             store.setState(initialState);
           }
 
-          while (readyCallbacks.length) {
-            readyCallbacks.shift()(key, store);
+          if (--store.initializingReplication === 0) {
+            while (store.readyCallbacks.length) {
+              store.readyCallbacks.shift()(key, store);
+            }
           }
         }
       }
@@ -151,7 +154,7 @@ export default function replicate({
         : reducer(state, action);
 
       if (store && store.initializedReplication) {
-        for (let replicator of replicators) {
+        for (let replicator of store.replicators) {
           if (replicator.onStateChange) {
             if (reducerKeys) {
               for (let reducerKey of reducerKeys) {
@@ -184,11 +187,14 @@ export default function replicate({
     }
 
     store = next(replicatedReducer, initialState, enhancer);
-    store.initializedReplication = false;
+    store.replicators = (store.replicators || []).concat(replicators);
 
-    store.onReady = readyCallback => {
-      readyCallbacks.push(readyCallback);
-    };
+    if (!store.onReady) {
+      store.readyCallbacks = [];
+      store.onReady = readyCallback => {
+        store.readyCallbacks.push(readyCallback);
+      };
+    }
 
     for (let replicator of replicators) {
       if (replicator.onReady) {
@@ -196,14 +202,23 @@ export default function replicate({
       }
     }
 
+    if (store.initializingReplication) {
+      store.initializingReplication++;
+    } else {
+      store.initializingReplication = 1;
+    }
+
+    store.initializedReplication = false;
     store.onReady(() => {
       store.initializedReplication = true;
     });
 
-    store.setState = state => {
-      nextState = state;
-      store.replaceReducer(replicatedReducer);
-    };
+    if (!store.setState) {
+      store.setState = state => {
+        nextState = state;
+        store.replaceReducer(replicatedReducer);
+      };
+    }
 
     getInitialState();
 
