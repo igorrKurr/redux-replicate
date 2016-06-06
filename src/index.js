@@ -154,7 +154,7 @@ export default function replicate({
         : reducer(state, action);
 
       if (store && store.initializedReplication) {
-        for (let replicator of store.replicators) {
+        for (let replicator of replicators) {
           if (replicator.onStateChange) {
             if (reducerKeys) {
               for (let reducerKey of reducerKeys) {
@@ -187,7 +187,6 @@ export default function replicate({
     }
 
     store = next(replicatedReducer, initialState, enhancer);
-    store.replicators = (store.replicators || []).concat(replicators);
 
     if (!store.onReady) {
       store.readyCallbacks = [];
