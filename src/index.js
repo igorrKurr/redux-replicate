@@ -33,7 +33,7 @@ export default function replicate({
   return next => (reducer, initialState, enhancer) => {
     let store = null;
     let nextState = null;
-    const replicators = replicator.map(Object.create);
+    const replicators = replicator.map((item) => (Object.assign({}, item)));
 
     function getInitialState() {
       let initialState = reducerKeys ? {} : null;
